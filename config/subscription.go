@@ -7,11 +7,11 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"text/tabwriter"
@@ -93,16 +93,22 @@ func (s *Subscription) List() {
 	// Title
 	fmt.Fprintln(writer, "NAME\tURL\tLAST_UPDATE\tENABLED")
 	for _, v := range *s {
+		configFile := path.Join(viper.GetString("install.config_path"), v.Name+".yaml")
+		f, err := os.Stat(configFile)
+		if err != nil {
+			log.Printf("Cannot Open File %s, %s", v.Name, err.Error())
+			continue
+		}
 		if len(v.URL) > 12 {
-			fmt.Fprintf(writer, "%s\t%s...\t%s\t%s\n", v.Name, v.URL[:12], "2006-01-02 15:04:05", strconv.FormatBool(v.Enabled))
+			fmt.Fprintf(writer, "%s\t%s...\t%s\t%s\n", v.Name, v.URL[:12], f.ModTime().String(), strconv.FormatBool(v.Enabled))
 		} else {
-			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", v.Name, v.URL, "2006-01-02 15:04:05", strconv.FormatBool(v.Enabled))
+			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", v.Name, v.URL, f.ModTime().String(), strconv.FormatBool(v.Enabled))
 		}
 	}
 	writer.Flush()
 }
 
-func (s *Subscription) Download(name string, path string) (io.ReadCloser, error) {
+func (s *Subscription) Download(name string) (io.ReadCloser, error) {
 	i, err := s.GetByName(name)
 	if err != nil {
 		return nil, err
@@ -120,13 +126,13 @@ func (s *Subscription) Download(name string, path string) (io.ReadCloser, error)
 
 func (s *Subscription) Update(name string) error {
 	p := viper.GetString("install.config_path")
-	u, err := s.Download(name, p)
+	u, err := s.Download(name)
 	if err != nil {
 		return err
 	}
 	defer u.Close()
 
-	data, err := ioutil.ReadAll(u)
+	data, err := io.ReadAll(u)
 	if err != nil {
 		return err
 	}
@@ -162,7 +168,7 @@ func (s *Subscription) Update(name string) error {
 		return err
 	}
 
-	err = ioutil.WriteFile(filepath.Join(p, name+".yaml"), o, 0644)
+	err = os.WriteFile(filepath.Join(p, name+".yaml"), o, 0644)
 
 	if err != nil {
 		return err
